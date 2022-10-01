@@ -1,0 +1,8 @@
+.vscode/
+
+build/
+output/
+
+*.hex
+*.lss
+*.bin
