@@ -3,7 +3,7 @@
 ######################################################################
 
 # Name of the project
-PROJ_NAME    := appleii-floppy-emulator
+PROJ_NAME    := tinyDiskII
 
 ## FILES ##
 SRCS         := main.cpp

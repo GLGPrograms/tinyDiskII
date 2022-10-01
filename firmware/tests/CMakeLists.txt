@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(tinydiskii-tests)
+project(tinyDiskII-tests)
 
-add_executable(tinydiskii-tests
+add_executable(tinyDiskII-tests
   test_runner.cpp
 
   test_fat_filename.cpp
@@ -17,5 +17,5 @@ add_executable(tinydiskii-tests
 # SdCard image file must be copied in build directory
 file(COPY SAMPLEDISK.bin DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
-add_test(NAME tinydiskii-tests
-        COMMAND tinydiskii-tests)
+add_test(NAME tinyDiskII-tests
+        COMMAND tinyDiskII-tests)
