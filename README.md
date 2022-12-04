@@ -48,17 +48,7 @@ Floppy formatting is currently not supported, but it is currently under develope
 
 ## Schematics and PCB
 
-> :warning: Schematics and PCB layout can be found in `/schematics` folder. Please note that **rev1.0 hardware requires some physical changes**, so if you are interested to fabricare the PCB, check out the following updated schematic first.
-
-![tinyDiskII](docs/tinyDiskII-schematics-corrected.png)
-
-Manual fixes are highlighed with red lines:
-
-- LV_DISK_READ connected to U4 pin 21;
-- SD_WP connected to U4 pin 22;
-- SD_DETECT connected to U4 pin 23;
-- Added 10K pull-up resistor to DISK_WRITE_EN;
-- Pin 4 and 16 of U3 are shorted together.
+> :warning: Schematics and PCB layout can be found in `/schematics` folder. Please note that I had physically implemented only rev1.0, which requires some hardware patches. The issues were fixed in rev1.1, but I never put it into production. Build it at your own risk.
 
 ## Firmware
 
@@ -77,6 +67,18 @@ cd build
 cmake --build .
 ./tinyDiskII-tests
 ```
+
+## Changelog
+
+* rev1.0: first version
+* rev1.1: fixes the issues present in rev1.0:
+
+    - LV_DISK_READ connected to U4 pin 21;
+    - SD_WP connected to U4 pin 22;
+    - SD_DETECT connected to U4 pin 23;
+    - Added 10K pull-up resistor to DISK_WRITE_EN;
+    - Pin 4 and 16 of U3 are shorted together.
+
 
 ## Contributors and references
 
