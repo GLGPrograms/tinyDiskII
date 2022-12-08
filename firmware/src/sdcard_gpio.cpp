@@ -35,8 +35,8 @@ void sdcard_gpio_init()
   PinCtrl(SDCARD_LOCK) = PORT_OPC_PULLUP_gc;
 
   // Configure SPI, but keep it disabled
-  // MSbit first, master mode, SPI1 mode (ckrising = setup, ckrising = sample), /64 prescaler
-  SPIC.CTRL = SPI_MASTER_bm | SPI_MODE_0_gc | SPI_PRESCALER_DIV64_gc;
+  // MSbit first, master mode, SPI1 mode (ckrising = setup, ckrising = sample), /4 prescaler
+  SPIC.CTRL = SPI_MASTER_bm | SPI_MODE_0_gc | SPI_PRESCALER_DIV4_gc;
 }
 
 void sdcard_gpio_bitbang_init()
