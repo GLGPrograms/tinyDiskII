@@ -206,7 +206,7 @@ bool sdcard_card_init()
 
   // Initialize card
   debug_printP(PSTR("CMD55&ACMD41\n\r"));
-  if (!(sdcard_wait_for_astatus(SD_AMCD_SD_SEND_OP_COND, type == SD_SD2 ? 0x40000000 : 0, R1_IDLE, 200)))
+  if (!(sdcard_wait_for_astatus(SD_AMCD_SD_SEND_OP_COND, type == SD_SD2 ? 0x40000000 : 0, 0x00, 200)))
     goto failure;
 
   // Check for SDHC
