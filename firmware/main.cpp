@@ -133,8 +133,8 @@ static void gui_mainloop()
       // Update file pointer and eventually update file list
       if (delta != 0)
       {
-        if (delta > 0) fat_next(&fat_entry);
-        if (delta < 0) fat_prev(&fat_entry);
+        if (delta > 0) fat_prev(&fat_entry);
+        if (delta < 0) fat_next(&fat_entry);
         display_update_file_list(fat_entry);
       }
 
