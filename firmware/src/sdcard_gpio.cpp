@@ -13,10 +13,10 @@
 
 /* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
 // IO defines
-#define SDCARD_DO C, 5
-#define SDCARD_CS C, 4
-#define SDCARD_CLK C, 7
-#define SDCARD_DI C, 6
+#define SDCARD_CS  C, 4
+#define SDCARD_CLK C, 5
+#define SDCARD_DI  C, 6
+#define SDCARD_DO  C, 7
 #define SDCARD_PRES D, 3
 #define SDCARD_LOCK D, 2
 
@@ -33,20 +33,30 @@ void sdcard_gpio_init()
   Port(SDCARD_LOCK).DIRCLR = PinMsk(SDCARD_LOCK);
   PinCtrl(SDCARD_PRES) = PORT_OPC_PULLUP_gc;
   PinCtrl(SDCARD_LOCK) = PORT_OPC_PULLUP_gc;
-
-  // Configure SPI, but keep it disabled
-  // MSbit first, master mode, SPI1 mode (ckrising = setup, ckrising = sample), /4 prescaler
-  SPIC.CTRL = SPI_MASTER_bm | SPI_MODE_0_gc | SPI_PRESCALER_DIV4_gc;
 }
 
 void sdcard_gpio_bitbang_init()
 {
-  SPIC.CTRL &= ~SPI_ENABLE_bm;
+  // Disable syncronous UART
+  // Note: if MSPI is set, CLK pin can't be manually controlled as GPIO,
+  // even if transmitter and received are disabled.
+  USARTC1.CTRLB = 0x00;
+  USARTC1.CTRLA = 0x00;
+  USARTC1.CTRLC = 0x00;
 }
 
 void sdcard_gpio_spi_init()
 {
-  SPIC.CTRL |= SPI_ENABLE_bm;
+  // Enable syncronous UART
+  // Maximum baudrate. Note: BSCALE is ignored in MSPI mode
+  USARTC1.BAUDCTRLA = 0;
+  USARTC1.BAUDCTRLB = 0;
+  // All interrupts disabled
+  USARTC1.CTRLA = USART_RXCINTLVL_OFF_gc | USART_TXCINTLVL_OFF_gc | USART_DREINTLVL_OFF_gc;
+  // Master SPI mode
+  USARTC1.CTRLC = USART_CMODE_MSPI_gc;
+  // Enable both transmitter and receiver
+  USARTC1.CTRLB = (USART_RXEN_bm | USART_TXEN_bm);
 }
 
 /* ----------------------- sdcard low level utilities ----------------------- */
@@ -99,21 +109,28 @@ uint8_t sdcard_di()
 
 /* ------------------ byte-level sdcard interface routines ------------------ */
 
+static uint8_t transceive_spi(uint8_t c)
+{
+  USARTC1.DATA = c;
+  while (!(USARTC1.STATUS & USART_TXCIF_bm))
+    ;
+  USARTC1.STATUS |= USART_TXCIF_bm;
+
+  while (!(USARTC1.STATUS & USART_RXCIF_bm))
+    ;
+  return USARTC1.DATA;
+}
+
 uint8_t read_byte_spi(void)
 {
-  SPIC.DATA = 0xFF;
-  while (!(SPIC.STATUS & SPI_IF_bm))
-    ;
-  SPIC.STATUS |= SPI_IF_bm;
-  return SPIC.DATA;
+  // Transmit dummy byte, then read data register
+  return transceive_spi(0xFF);
 }
 
 void write_byte_spi(uint8_t c)
 {
-  SPIC.DATA = c;
-  while (!(SPIC.STATUS & SPI_IF_bm))
-    ;
-  SPIC.STATUS |= SPI_IF_bm;
+  // Transmit desired byte, then do a dummy read on data register
+  transceive_spi(c);
 }
 
 uint8_t read_byte_slow(void)
