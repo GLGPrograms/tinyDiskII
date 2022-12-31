@@ -52,7 +52,7 @@ uint32_t dir_addr = 0;
 uint32_t data_addr = 0;
 
 // Data shared with sdcard.c for sector caching
-uint8_t sector_cache[SDCARD_BLOCK_SIZE];
+extern uint8_t sector_cache[SDCARD_BLOCK_SIZE + 2];
 
 /* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 

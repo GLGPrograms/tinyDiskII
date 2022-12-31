@@ -18,6 +18,8 @@
 
 // Writing buffer size
 #define WRITING_BUFFER_SIZE (350)
+// Size in byte of valid data in .NIC file
+#define NIC_SIZE (402)
 // Volume number is always the same
 #define volume (0xFE)
 
@@ -31,7 +33,7 @@
 #define FLOPPY_DISK_READ       D, 1
 #define FLOPPY_DISK_WRITE_PROT A, 7
 
-#define WRITE_CAPABLE (true)
+#define WRITE_CAPABLE (false)
 
 /* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
 
@@ -53,18 +55,24 @@ static void write_back(void);
 // DISK II status
 // Formatting operation has been detected
 static bool formatting = false;
-// Physical track
-static uint8_t ph_track; // 0 - 69
-// Disk sector
-static uint8_t sector; // 0 - 15
-// Number of read bits from NIC file sector (maximum of 512 bytes)
-static uint16_t bitbyte; // 0 - (8*512-1)
+// Physical track (0 - 69)
+static uint8_t ph_track;
+// Disk sector (0 - 15)
+static uint8_t sector; 
+
+// DISK II read variables
+// Number of read bytes from NIC file sector (maximum of 512 bytes)
+static uint16_t byte_cnt;
+// Masks current bit
+static uint8_t byte_mask;
+// Update sector request
+static volatile bool prepare = true;
+
+// DISK II write variables
 static uint8_t write_buffer[WRITING_BUFFER_SIZE];
 static uint8_t write_data = 0x00;
 static uint8_t write_bitcount = 0;
 static bool synced = false;
-// Update sector request
-static volatile bool prepare = true;
 
 /* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
@@ -82,13 +90,16 @@ static uint8_t floppy_write_enable()
 
 /* - - - - - - - - - - - - - floppy reading methods - - - - - - - - - - - - - */
 
+// TODO remove this after complete migration to DMA
 static void abort_reading()
 {
-  if (bitbyte < (402 * 8))
+#if 0
+  if (byte_cnt < (NIC_SIZE))
   {
-    nic_abort_read(bitbyte);
-    bitbyte = 402 * 8;
+    nic_abort_read(byte_cnt);
+    byte_cnt = NIC_SIZE;
   }
+#endif
 }
 
 static void irq_reading()
@@ -102,16 +113,22 @@ static void irq_reading()
   if (prepare)
     return;
 
-  if (bitbyte < (402 * 8))
+  if (byte_cnt < NIC_SIZE)
   {
-    // Fetch bit from sdcard
-    readpulse = nic_get_bit();
+    // Fetch byte from sdcard
+    readpulse = nic_get_byte(byte_cnt);
 
     // 3us low, then 1us high pulse
-    if (readpulse)
+    if (readpulse & byte_mask)
       TCD0.CCB = 3e-6 * (F_CPU);
 
-    bitbyte++;
+    // Memento: data must be sent MSb first to Apple][
+    byte_mask >>= 1;
+    if (byte_mask == 0)
+    {
+      byte_mask = 0x80;
+      byte_cnt++;
+    }
 
     return;
   }
@@ -198,7 +215,6 @@ static void write_back(void)
 {
   static unsigned char sec;
 
-  // if (bit_is_set(PIND,3)) return;
   if (write_buffer[2] == 0xAD)
   {
     if (!formatting)
@@ -234,7 +250,8 @@ void floppy_init()
   // Input stepper
   Port(FLOPPY_PH).DIRCLR = FLOPPY_PH_MASK;
 
-  bitbyte = 0;
+  byte_cnt = 0;
+  byte_mask = 0x80;
 
   /*
    *
@@ -308,7 +325,8 @@ void floppy_main()
 
   // Prepare variables
   cli();
-  bitbyte = 0;
+  byte_cnt = 0;
+  byte_mask = 0x80;
   prepare = true;
   // Leave track at last position...
   // ph_track = 0;
@@ -377,24 +395,14 @@ void floppy_main()
       // mute interrupts during update. 0 will be sent
       cli();
 
-      if (bitbyte == (402 * 8))
-      {
-        // Sector is ended,
-        // discard 112 byte (including CRC 2 byte)
-        nic_abort_read(bitbyte);
-      }
-
-      sdcard_set_mode(SPI, 1);
-
       // Move to the next sector circularly
       // Sectors does not have a particular alignemnt between track and track.
       // Then, sector is always incremented
       sector = ((sector + 1) & 0xf);
       nic_update_sector(ph_track >> 1, sector);
-      bitbyte = 0;
+      byte_cnt = 0;
+      byte_mask = 0x80;
       prepare = false;
-
-      sdcard_set_mode(BITBANG_FAST, 0);
 
       sei();
     }
@@ -402,19 +410,16 @@ void floppy_main()
 
   debug_printP(PSTR("Reading done\n\r"));
 
-  // wait till last irq
-  while (!prepare)
-    ;
-  if (bitbyte == (402 * 8))
-  {
-    // Sector is ended,
-    // discard 112 byte (including CRC 2 byte)
-    nic_abort_read(bitbyte);
-  }
+  // TODO wait till last DMA operation
 
-  sdcard_set_mode(SPI, 1);
+  // CS can be restored to 1
+  sdcard_set_mode(FAST, 1);
 
-  bitbyte = 0;
+  // Always invalidate sector reading cache after each floppy operation
+  sdcard_cache_invalidate();
+
+  byte_cnt = 0;
+  byte_mask = 0x80;
   ph_track = 0;
   ofs = 0;
   old_ofs = 0;

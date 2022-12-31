@@ -20,7 +20,7 @@ bool nic_build_fat(uint16_t fat_entry);
 bool nic_file_selected();
 void nic_unselect_file();
 bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector);
-uint8_t nic_get_bit();
+uint8_t nic_get_byte(uint16_t offset);
 void nic_abort_read(uint16_t bits);
 bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t sector);
 
