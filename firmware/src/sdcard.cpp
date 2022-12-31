@@ -22,7 +22,7 @@ enum sdcard_type_t
 static sdcard_type_t type = SD_SD1;
 
 // Index of currently cached sector
-static uint32_t sector_cache_idx = 0x00;
+static uint32_t sector_cache_idx = 0xFFFFFFFF;
 
 /* * * * * * * * * * * * *  SHARED OR EXTERN MEMBERS  * * * * * * * * * * * * */
 
@@ -31,35 +31,30 @@ uint8_t (*read_byte)() = NULL;
 void (*write_byte)(uint8_t) = NULL;
 
 // Shared with sdcard_fat for sector caching
-extern uint8_t sector_cache[SDCARD_BLOCK_SIZE];
+uint8_t sector_cache[SDCARD_BLOCK_SIZE + 2];
 
 /* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
 
 void sdcard_init()
 {
   sdcard_gpio_init();
-  sdcard_set_mode(BITBANG_SLOW, 1);
+  sdcard_set_mode(SLOW, 1);
 }
 
 /* - - - - - - - - - - - - sdcard low level utilities - - - - - - - - - - - - */
 
 void sdcard_set_mode(sdcard_mode_t mode, bool cs_status)
 {
-  if (mode >= BITBANG_SLOW)
-  {
+  if (mode == SLOW)
     sdcard_gpio_bitbang_init();
-    read_byte = (mode == BITBANG_SLOW ? read_byte_slow : read_byte_fast);
-    write_byte = (mode == BITBANG_SLOW ? write_byte_slow : write_byte_fast);
-    sdcard_cs(cs_status);
-  }
   else
-  {
     sdcard_gpio_spi_init();
-    read_byte = read_byte_spi;
-    write_byte = write_byte_spi;
-    sdcard_cs(1);
-  }
+
+  sdcard_cs(cs_status);
+  read_byte = read_byte_spi;
+  write_byte = write_byte_spi;
 }
+
 /* - - - - - - - - - - - - - - - sdcard commands  - - - - - - - - - - - - - - */
 
 bool sdcard_wait_for_status(uint8_t command, uint8_t status, uint16_t timeout)
@@ -165,7 +160,7 @@ bool sdcard_card_init()
   uint16_t i;
 
   // SDCard initialization must use lower speed
-  sdcard_set_mode(BITBANG_SLOW, 1);
+  sdcard_set_mode(SLOW, 1);
 
   // 200 clock pulses with CS not asserted
   sdcard_cs(1);
@@ -229,7 +224,7 @@ bool sdcard_card_init()
   }
 
   // Now, higher speed may be used
-  sdcard_set_mode(SPI, 1);
+  sdcard_set_mode(FAST, 1);
 
   ret = true;
 
@@ -287,4 +282,9 @@ fail:
   memcpy(data, sector_cache + (offset % SDCARD_BLOCK_SIZE), len);
 
   return ret;
+}
+
+void sdcard_cache_invalidate()
+{
+  sector_cache_idx = 0xFFFFFFFF;
 }
