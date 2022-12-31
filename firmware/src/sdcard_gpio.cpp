@@ -1,11 +1,11 @@
 /* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
-
-#include "sdcard.h"
+#include "sdcard_gpio.h"
 
 #include <avr/io.h>
 #include <util/delay.h>
 #include <ctype.h>
 
+#include "sdcard.h"
 #include "util/macro.h"
 #include "util/port.h"
 
@@ -20,6 +20,14 @@
 #define SDCARD_PRES D, 3
 #define SDCARD_LOCK D, 2
 
+// Lo-speed baudrate (50kHz)
+#define MSPI_LO_BAUDRATE  (50000)
+// See AVR 8077 21.3.1 Internal Clock Generation
+#define DEBUG_UART_BSEL   ((F_CPU)/(2*MSPI_LO_BAUDRATE) - 1)
+
+static void sdcard_gpio_hispeed(bool hispeed);
+static uint8_t transceive_spi(uint8_t c);
+
 /* * * * * * * * * * * * *  SHARED OR EXTERN MEMBERS  * * * * * * * * * * * * */
 
 void sdcard_gpio_init()
@@ -33,30 +41,41 @@ void sdcard_gpio_init()
   Port(SDCARD_LOCK).DIRCLR = PinMsk(SDCARD_LOCK);
   PinCtrl(SDCARD_PRES) = PORT_OPC_PULLUP_gc;
   PinCtrl(SDCARD_LOCK) = PORT_OPC_PULLUP_gc;
-}
 
-void sdcard_gpio_bitbang_init()
-{
-  // Disable syncronous UART
-  // Note: if MSPI is set, CLK pin can't be manually controlled as GPIO,
-  // even if transmitter and received are disabled.
-  USARTC1.CTRLB = 0x00;
-  USARTC1.CTRLA = 0x00;
-  USARTC1.CTRLC = 0x00;
-}
-
-void sdcard_gpio_spi_init()
-{
   // Enable syncronous UART
-  // Maximum baudrate. Note: BSCALE is ignored in MSPI mode
-  USARTC1.BAUDCTRLA = 0;
-  USARTC1.BAUDCTRLB = 0;
+  sdcard_gpio_bitbang_init();
   // All interrupts disabled
   USARTC1.CTRLA = USART_RXCINTLVL_OFF_gc | USART_TXCINTLVL_OFF_gc | USART_DREINTLVL_OFF_gc;
   // Master SPI mode
   USARTC1.CTRLC = USART_CMODE_MSPI_gc;
   // Enable both transmitter and receiver
   USARTC1.CTRLB = (USART_RXEN_bm | USART_TXEN_bm);
+}
+
+// Switch from lo-speed and hi-speed SPI
+static void sdcard_gpio_hispeed(bool hispeed)
+{
+  // FIXME should disable RX/TX while changing baudrate
+  // This causes issues...
+  // USARTC1.CTRLB = 0x00;
+
+  // Note: BSCALE is ignored in MSPI mode
+  USARTC1.BAUDCTRLA = hispeed ?  0x00 : LSB16(DEBUG_UART_BSEL);
+  USARTC1.BAUDCTRLB = hispeed ?  0x00 : MSB16(DEBUG_UART_BSEL);
+
+  // USARTC1.CTRLB = (USART_RXEN_bm | USART_TXEN_bm);
+}
+
+// Put SPI communication in lo-speed mode (sd card initialization)
+void sdcard_gpio_bitbang_init()
+{
+  sdcard_gpio_hispeed(false);
+}
+
+// Put SPI communication in hi-speed mode
+void sdcard_gpio_spi_init()
+{
+  sdcard_gpio_hispeed(true);
 }
 
 /* ----------------------- sdcard low level utilities ----------------------- */
@@ -71,40 +90,12 @@ bool sdcard_locked()
   return Port(SDCARD_LOCK).IN & PinMsk(SDCARD_LOCK);
 }
 
-void sdcard_do(uint8_t i)
-{
-  if (i)
-    Port(SDCARD_DO).OUTSET = PinMsk(SDCARD_DO);
-  else
-    Port(SDCARD_DO).OUTCLR = PinMsk(SDCARD_DO);
-}
-
 void sdcard_cs(uint8_t i)
 {
   if (i)
     Port(SDCARD_CS).OUTSET = PinMsk(SDCARD_CS);
   else
     Port(SDCARD_CS).OUTCLR = PinMsk(SDCARD_CS);
-}
-
-void sdcard_clk_toggle()
-{
-  Port(SDCARD_CLK).OUTTGL = PinMsk(SDCARD_CLK);
-}
-
-void sdcard_clk(uint8_t i)
-{
-  if (i)
-    Port(SDCARD_CLK).OUTSET = PinMsk(SDCARD_CLK);
-  else
-    Port(SDCARD_CLK).OUTCLR = PinMsk(SDCARD_CLK);
-}
-
-uint8_t sdcard_di()
-{
-  if (Port(SDCARD_DI).IN & PinMsk(SDCARD_DI))
-    return 1;
-  return 0;
 }
 
 /* ------------------ byte-level sdcard interface routines ------------------ */
@@ -118,6 +109,8 @@ static uint8_t transceive_spi(uint8_t c)
 
   while (!(USARTC1.STATUS & USART_RXCIF_bm))
     ;
+  USARTC1.STATUS |= USART_RXCIF_bm;
+
   return USARTC1.DATA;
 }
 
@@ -131,70 +124,4 @@ void write_byte_spi(uint8_t c)
 {
   // Transmit desired byte, then do a dummy read on data register
   transceive_spi(c);
-}
-
-uint8_t read_byte_slow(void)
-{
-  uint8_t c = 0;
-  volatile uint8_t i;
-
-  sdcard_do(1);
-  _delay_us(4);
-  for (i = 0; i != 8; i++)
-  {
-    sdcard_clk(1);
-    c = ((c << 1) | (sdcard_di()));
-    _delay_us(4);
-    sdcard_clk(0);
-    _delay_us(4);
-  }
-  return c;
-}
-
-void write_byte_slow(uint8_t c)
-{
-  uint8_t d;
-  for (d = 0b10000000; d; d >>= 1)
-  {
-    if (c & d)
-      sdcard_do(1);
-    else
-      sdcard_do(0);
-
-    _delay_us(4);
-    sdcard_clk(1);
-    _delay_us(4);
-    sdcard_clk(0);
-  }
-}
-
-uint8_t read_byte_fast(void)
-{
-  uint8_t c = 0;
-  volatile uint8_t i;
-
-  sdcard_do(1);
-
-  for (i = 0; i != 8; i++)
-  {
-    sdcard_clk(1);
-    c = ((c << 1) | (sdcard_di()));
-    sdcard_clk(0);
-  }
-  return c;
-}
-
-void write_byte_fast(uint8_t c)
-{
-  uint8_t d;
-  for (d = 0b10000000; d; d >>= 1)
-  {
-    if (c & d)
-      sdcard_do(1);
-    else
-      sdcard_do(0);
-    sdcard_clk(1);
-    sdcard_clk(0);
-  }
-  sdcard_do(0);
 }

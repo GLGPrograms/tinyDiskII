@@ -10,7 +10,9 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * *  EXTERN VARIABLES  * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
+
+#define FAT_NIC_ELEMS (150)
 
 // WIP data shared with sdcard_nic for faster access to floppy disk files.
 extern uint32_t fat_addr;
@@ -18,6 +20,7 @@ extern uint32_t sec_per_cluster;
 extern uint8_t sectors_per_cluster2;
 extern uint32_t dir_addr;
 extern uint32_t data_addr;
+extern uint8_t sector_cache[SDCARD_BLOCK_SIZE + 2];
 
 /* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
@@ -27,6 +30,8 @@ extern uint32_t data_addr;
 
 static uint16_t nic_fat[FAT_NIC_ELEMS];
 static bool is_file_selected = false;
+// TODO dummy byte to be sent when reading
+static uint8_t foo = 0xff;
 
 /* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
@@ -93,36 +98,112 @@ bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector)
   // Convert in bytes
   sd_address *= SDCARD_BLOCK_SIZE;
 
+  // FIXME - Debug alert:
+  // check if DMA is still busy. Should never happen.
+  uint8_t dma_status = DMA.STATUS;
+  if (dma_status & (DMA_CH0PEND_bm | DMA_CH1PEND_bm | DMA_CH0BUSY_bm | DMA_CH1BUSY_bm))
+  {
+    DMA.CTRL = 0;
+    DMA.CTRL = DMA_RESET_bm;
+
+    debug_printP(PSTR("DMA BUSY %x, reinit\n\r"), dma_status);
+    return false;
+  }
+
+  // FIXME cs should be already asserted while in floppy reading
   sdcard_cs(0);
   uint8_t ret = 0;
   ret |= sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE);
   ret |= sdcard_command(SD_CMD_READ_SINGLE_BLOCK, data_addr + sd_address);
   ret |= (sdcard_wait_for_data(0) != SD_STATE_START_DATA_BLOCK);
-  sdcard_cs(1);
 
+  // Debug alert:
+  // sd addressing has failed, a file reload may be needed
   if (ret)
     debug_printP(PSTR("Fail updt t:%d s:%d\n\r"), dsk_trk, dsk_sector);
+  // FIXME should return
+
+  // TODO this should be moved in sdcard_gpio.c!!!
+  /* * * DMAC Configuration * * */
+  //  Disable DMAC and reset all (FIXME)
+  DMA.CTRL = 0;
+  DMA.CTRL = DMA_RESET_bm;
+  DMA.CTRL = DMA_ENABLE_bm;
+
+  /* * * Configure DMA Channel 0 as SPI reader * * */
+  // Reset it before initialization (FIXME)
+  DMA.CH0.CTRLA = DMA_CH_RESET_bm;
+  // Auto increment RAM address
+  DMA.CH0.ADDRCTRL = DMA_CH_DESTDIR_INC_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc | DMA_CH_SRCDIR_FIXED_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
+  // Read trigger on RX completed
+  DMA.CH0.TRIGSRC = DMA_CH_TRIGSRC_USARTC1_RXC_gc;
+  // Read a whole sector plus 2 byte CRC
+  DMA.CH0.TRFCNT = SDCARD_BLOCK_SIZE + 2;
+  DMA.CH0.SRCADDR0 = ((uint16_t)&USARTC1.DATA) & 0xFF;
+  DMA.CH0.SRCADDR1 = ((uint16_t)&USARTC1.DATA) >> 8;
+  DMA.CH0.SRCADDR2 = 0;
+  DMA.CH0.DESTADDR0 = ((uint16_t)sector_cache) & 0xFF;
+  DMA.CH0.DESTADDR1 = ((uint16_t)sector_cache) >> 8;
+  DMA.CH0.DESTADDR2 = 0;
+  // Disable all interrupts (FIXME)
+  // DMA_CH_ERRINTLVL_MED_gc | DMA_CH_TRNINTLVL_MED_gc;
+  DMA.CH0.CTRLB = 0;
+
+  /* * * Configure DMA Channel 0 as SPI writer * * */
+  // Reset it before initialization (FIXME)
+  DMA.CH1.CTRLA = DMA_CH_RESET_bm;
+  // Auto increment RAM address
+  DMA.CH1.ADDRCTRL = DMA_CH_DESTDIR_FIXED_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc | DMA_CH_SRCDIR_FIXED_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
+  // Write trigger on data register empty
+  DMA.CH1.TRIGSRC = DMA_CH_TRIGSRC_USARTC1_DRE_gc;
+  // Read a whole sector plus 2 byte CRC
+  DMA.CH1.TRFCNT = SDCARD_BLOCK_SIZE + 2;
+  // Write dummy byte (FIXME, will be a fixed location of the write buffer)
+  DMA.CH1.SRCADDR0 = ((uint16_t)foo) & 0xFF;
+  DMA.CH1.SRCADDR1 = ((uint16_t)foo) >> 8;
+  DMA.CH1.SRCADDR2 = 0;
+  DMA.CH1.DESTADDR0 = ((uint16_t)&USARTC1.DATA) & 0xFF;
+  DMA.CH1.DESTADDR1 = ((uint16_t)&USARTC1.DATA) >> 8;
+  DMA.CH1.DESTADDR2 = 0;
+  // Disable all interrupts (FIXME)
+  // DMA_CH_ERRINTLVL_MED_gc | DMA_CH_TRNINTLVL_MED_gc;
+  DMA.CH1.CTRLB = 0;
+
+  // Enable reader first...
+  DMA.CH0.CTRLA = DMA_CH_ENABLE_bm | DMA_CH_SINGLE_bm | DMA_CH_BURSTLEN_1BYTE_gc;
+  // ...then writer
+  DMA.CH1.CTRLA = DMA_CH_ENABLE_bm | DMA_CH_SINGLE_bm | DMA_CH_BURSTLEN_1BYTE_gc;
+
+  // Material for the ISR
+#if 0
+    // Check for error flags
+    if (DMA.CH0.CTRLB & DMA_CH0ERRIF_bm)
+    {
+      debug_printP(PSTR("DMA0ERROR\n\r"));
+      DMA.CH0.CTRLB |= DMA_CH0ERRIF_bm;
+      // Stop channel 0
+      DMA.CH0.CTRLA = 0;
+    }
+
+    if (DMA.CH1.CTRLB & DMA_CH1ERRIF_bm)
+    {
+      debug_printP(PSTR("DMA1ERROR\n\r"));
+      DMA.CH1.CTRLB |= DMA_CH1ERRIF_bm;
+      // Stop channel 1
+      DMA.CH1.CTRLA = 0;
+    }
+#endif
 
   return true;
 }
 
-uint8_t nic_get_bit()
+// Get a byte from reading cache
+uint8_t nic_get_byte(uint16_t offset)
 {
-  sdcard_clk(1);
-  uint8_t bit = sdcard_di();
-  sdcard_clk(0);
-  return bit;
+  return sector_cache[offset];
 }
 
-void nic_abort_read(uint16_t bits)
-{
-  for (; bits < (514 * 8); bits++)
-  {
-    sdcard_clk(1);
-    sdcard_clk(0);
-  }
-}
-
+// TODO let the DMA do this
 bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t sector)
 {
   uint8_t c;
@@ -148,11 +229,9 @@ bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t se
   write_byte(0xff);
   write_byte(0xfe);
   // 22 ffs
-  sdcard_do(1);
-  for (uint8_t i = 0; i < 22 * 8; i++)
+  for (uint8_t i = 0; i < 22; i++)
   {
-    sdcard_clk(1);
-    sdcard_clk(0);
+    write_byte(0xff);
   }
 
   // sync header

@@ -18,12 +18,10 @@
 
 enum sdcard_mode_t
 {
-  // Used during data writing and FAT navigation
-  SPI = 0,
   // Used for initialization phase only
-  BITBANG_SLOW = 1,
-  // Used for single-bit reading
-  BITBANG_FAST = 3
+  SLOW = 0,
+  // Used during data reading/writing and FAT navigation
+  FAST = 1,
 };
 
 // Low level methods
@@ -89,5 +87,6 @@ void sdcard_init();
 bool sdcard_card_init();
 bool sdcard_read_sector(uint8_t *data, uint32_t start);
 bool sdcard_read_offset(void *data, uint32_t offset, size_t len);
+void sdcard_cache_invalidate();
 
 #endif // SRC_SDCARD_H_
