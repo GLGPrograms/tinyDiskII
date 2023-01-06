@@ -16,8 +16,8 @@
 
 /* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
-// Writing buffer size
-#define WRITING_BUFFER_SIZE (350)
+// Writing buffer size, full sector plus 2 byte CRC
+#define WRITING_BUFFER_SIZE (512 + 2 + 1)
 // Size in byte of valid data in .NIC file
 #define NIC_SIZE (402)
 // Volume number is always the same
@@ -33,12 +33,19 @@
 #define FLOPPY_DISK_READ       D, 1
 #define FLOPPY_DISK_WRITE_PROT A, 7
 
-#define WRITE_CAPABLE (false)
+#define WRITE_CAPABLE (true)
+
+enum write_status_t
+{
+  SYNC_D5,
+  SYNC_AA,
+  ADDR_FIELD,
+  DATA_FIELD
+};
 
 /* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
 
 // Reading routines
-static void abort_reading();
 static void irq_reading();
 
 // Writing routines
@@ -48,17 +55,15 @@ static void end_writing();
 static void check_data();
 static void write_pinchange();
 static void write_idle();
-static void write_back(void);
+static void write_back();
 
 /* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
 
 // DISK II status
-// Formatting operation has been detected
-static bool formatting = false;
 // Physical track (0 - 69)
 static uint8_t ph_track;
 // Disk sector (0 - 15)
-static uint8_t sector; 
+static uint8_t sector;
 
 // DISK II read variables
 // Number of read bytes from NIC file sector (maximum of 512 bytes)
@@ -69,10 +74,19 @@ static uint8_t byte_mask;
 static volatile bool prepare = true;
 
 // DISK II write variables
-static uint8_t write_buffer[WRITING_BUFFER_SIZE];
-static uint8_t write_data = 0x00;
-static uint8_t write_bitcount = 0;
+// FIXME temporary not static for tests
+// SD card sector buffer for writing operations
+uint8_t write_buffer[WRITING_BUFFER_SIZE];
+// Formatting operation has been detected
+static bool formatting = false;
+// Writing state machine has detected 0xD5 leading pattern
 static bool synced = false;
+// Status of the writing state machine
+static write_status_t write_status;
+// Internal shift register for readed bits
+static uint8_t write_data = 0x00;
+// Number of non-validated bits shifted inside write_data
+static uint8_t write_bitcount = 0;
 
 /* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
@@ -90,32 +104,22 @@ static uint8_t floppy_write_enable()
 
 /* - - - - - - - - - - - - - floppy reading methods - - - - - - - - - - - - - */
 
-// TODO remove this after complete migration to DMA
-static void abort_reading()
-{
-#if 0
-  if (byte_cnt < (NIC_SIZE))
-  {
-    nic_abort_read(byte_cnt);
-    byte_cnt = NIC_SIZE;
-  }
-#endif
-}
-
+// This routine is called by timer IRQ every 4us
 static void irq_reading()
 {
   uint8_t readpulse;
 
-  // disable match
+  // disable match (default = output 0)
   TCD0.CCB = 0xFFFF;
 
   // Still fetching data
-  if (prepare)
+  // While in formatting status, always output 0
+  if (prepare || formatting)
     return;
 
   if (byte_cnt < NIC_SIZE)
   {
-    // Fetch byte from sdcard
+    // Fetch byte from sdcard sector cache
     readpulse = nic_get_byte(byte_cnt);
 
     // 3us low, then 1us high pulse
@@ -154,6 +158,7 @@ static void init_writing()
   TCD0.CCB = 0xFFFF;
   synced = false;
   write_bitcount = 0;
+  write_status = SYNC_D5;
   floppy_read_data();
   TCD0.CNT = 0x0000;
   TCD0.INTFLAGS = TC0_OVFIF_bm;
@@ -162,7 +167,9 @@ static void init_writing()
 // this function should be called when write request is de-asserted
 static void end_writing()
 {
-  write_back();
+  // Write data only if a data field has been populated, with or without its address field
+  if (write_status == DATA_FIELD)
+    write_back();
   TCD0.CNT = 0x0000;
   TCD0.INTFLAGS = TC0_OVFIF_bm;
   sei();
@@ -170,22 +177,86 @@ static void end_writing()
 
 static void check_data()
 {
-  static uint16_t bufsize;
-  if (!synced && write_data == 0xD5)
-  {
-    synced = true;
-    bufsize = 0;
-    goto push;
-  }
+  static uint8_t* write_ptr;
+  static uint16_t write_len = 0;
 
-  if (synced && bufsize < WRITING_BUFFER_SIZE)
+  if (!synced)
   {
-    write_bitcount++;
-    if (write_bitcount == 8)
+    // Wait for sync byte
+    if (write_data != 0xD5)
+      return;
+
+    synced = true;
+    // TODO in write init, remember to initialize:
+    // write_bitcount = 0
+    // write_status = SYNC_D5
+  }
+  else
+    write_bitcount--;
+
+  if (write_bitcount == 0)
+  {
+    write_bitcount = 8;
+    switch (write_status)
     {
-    push:
-      write_bitcount = 0;
-      write_buffer[bufsize++] = write_data;
+      case SYNC_D5:
+        if (write_data == 0xAA)
+          write_status = SYNC_AA;
+        // TODO else raise an error (debug)
+        break;
+
+      case SYNC_AA:
+        // Address field
+        if (write_data == 0x96)
+        {
+          // initialize write pointer after 0xD5 0xAA 0x96
+          // Address field is 14 bytes long, header must be skipped
+          write_ptr = write_buffer + 0x25;
+          write_len = 14 - 3;
+          write_status = ADDR_FIELD;
+          formatting = true;
+        }
+        // Data field
+        else if (write_data == 0xAD)
+        {
+          // initialize write pointer after 0xD5 0xAA 0xAD
+          // Data field is 349 bytes long, header must be skipped
+          write_ptr = write_buffer + 0x38;
+          write_len = 349 - 3;
+          write_status = DATA_FIELD;
+        }
+        // TODO else raise an error (debug)
+        break;
+
+      // Write the actual data
+      case ADDR_FIELD:
+        if (write_len)
+        {
+          *(write_ptr++) = write_data;
+          write_len--;
+        }
+        else
+        {
+          synced = false;
+          write_status = SYNC_D5;
+          write_bitcount = 0;
+        }
+        break;
+
+      case DATA_FIELD:
+        if (write_len)
+        {
+          *(write_ptr++) = write_data;
+          write_len--;
+        }
+        else
+        {
+          write_back();
+          synced = false;
+          write_status = SYNC_D5;
+          write_bitcount = 0;
+        }
+        break;
     }
   }
 }
@@ -211,36 +282,39 @@ static void write_idle()
 }
 
 // write back writeData into the SD card
-static void write_back(void)
+static void write_back()
 {
-  static unsigned char sec;
+  uint8_t wr_track = ph_track >> 1;
+  uint8_t wr_sector = sector;
 
-  if (write_buffer[2] == 0xAD)
+  // Formatting: ignore physical track and current sector, fetch them
+  // from address field inside writing buffer.
+  if (formatting)
   {
-    if (!formatting)
-    {
-      abort_reading();
-      nic_write_sector(write_buffer, volume, ph_track >> 1, sector);
-      write_buffer[2] = 0;
-      prepare = true;
-    }
-    else
-    {
-      sector = sec;
-      formatting = false;
-      if (sec == 0xf)
-      {
-        // cancel reading
-        abort_reading();
-        prepare = true;
-      }
-    }
+    wr_track = ((write_buffer[0x27] & 0x55) << 1) | (write_buffer[0x28] & 0x55);
+    wr_sector = ((write_buffer[0x29] & 0x55) << 1) | (write_buffer[0x2A] & 0x55);
+    // Globally update sector position for reading
+    sector = wr_sector;
+    // debug_printP(PSTR("f%d\n\r"), sector);
+    formatting = false;
   }
-  if (write_buffer[2] == 0x96)
+  // Only data field was written, manually populate address field
+  // inside buffer with physical track and current sector
+  else
   {
-    sec = (((write_buffer[7] & 0x55) << 1) | (write_buffer[8] & 0x55));
-    formatting = true;
+    uint8_t crc = volume ^ wr_track ^ wr_sector;
+    write_buffer[0x25] = (volume >> 1) | 0xAA;
+    write_buffer[0x26] = volume | 0xAA;
+    write_buffer[0x27] = (wr_track >> 1) | 0xAA;
+    write_buffer[0x28] = wr_track | 0xAA;
+    write_buffer[0x29] = (wr_sector >> 1) | 0xAA;
+    write_buffer[0x2A] = wr_sector | 0xAA;
+    write_buffer[0x2B] = (crc >> 1) | 0xAA;
+    write_buffer[0x2C] = crc | 0xAA;
   }
+
+  // Actually write the sector inside SD Card
+  nic_write_sector(write_buffer, wr_track, wr_sector);
 }
 
 /* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
@@ -289,6 +363,9 @@ void floppy_init()
 
   // Enable clock to the TCD0
   TCD0.CTRLA = TC_CLKSEL_DIV1_gc;
+
+  // Prepare write buffer content
+  nic_prepare_wrbuf(write_buffer);
 }
 
 /* - - - - - - - - - - - - - - Low-level methods  - - - - - - - - - - - - - - */
@@ -316,96 +393,120 @@ ISR(TCD0_OVF_vect)
 
 /* - - - - - - - - - - - - - - High-level methods - - - - - - - - - - - - - - */
 
-void floppy_main()
+static void floppy_update_sector()
+{
+  // mute interrupts during update. 0 will be sent
+  cli();
+
+  // Move to the next sector circularly
+  // Sectors does not have a particular alignemnt between track and track.
+  // Then, sector is always incremented
+  sector = ((sector + 1) & 0xf);
+  nic_update_sector(ph_track >> 1, sector);
+  byte_cnt = 0;
+  byte_mask = 0x80;
+  prepare = false;
+
+  sei();
+}
+
+static void floppy_handle_writing()
+{
+  init_writing();
+
+  // TODO explain these lines
+  uint8_t magstate = floppy_write_in();
+
+  do
+  {
+    uint8_t new_magstate = floppy_write_in();
+    if (magstate != new_magstate)
+    {
+      write_pinchange();
+      magstate = new_magstate;
+    }
+    if (TCD0.INTFLAGS & TC0_OVFIF_bm)
+    {
+      write_idle();
+    }
+  } while (floppy_write_enable());
+
+  end_writing();
+
+  // Wait here until DMA has finished.
+  // While waiting, writing may be reasserted, for this reason
+  // floppy_handle_writing() may be called immediately after return.
+  while(!sdcard_nic_writeback_ended())
+    ;
+
+  // After writing, always update sector cache from SD card
+  prepare = true;
+}
+
+/* * * Update physical track position * * */
+static void floppy_update_stepper()
 {
   // Current stepper offset (0 to 3)
   static uint8_t ofs = 0;
   // Latest stepper offset
   static uint8_t old_ofs = 0;
 
-  // Prepare variables
+  uint8_t stp_pos = (Port(FLOPPY_PH).IN & FLOPPY_PH_MASK);
+
+  ofs = ((stp_pos == 0b00001000)
+             ? 3
+             : ((stp_pos == 0b00000100)
+                    ? 2
+                    : ((stp_pos == 0b00000010) ? 1
+                                               : ((stp_pos == 0b00000001) ? 0 : ofs))));
+  if (ofs != old_ofs)
+  {
+    if (ofs == ((old_ofs + 1) & 0x3))
+      ph_track++;
+    else if (ofs == ((old_ofs - 1) & 0x3))
+      ph_track--;
+
+    old_ofs = ofs;
+
+    // < 0
+    if (ph_track > 70)
+      ph_track = 0;
+    // > fine tracce
+    else if (ph_track > 69)
+      ph_track = 69;
+
+    // DEBUG good old printf debug
+    // debug_printP(PSTR("%x\n\r"), ph_track);
+    // ... do not interrupt a sector reading when changing track
+  }
+}
+
+void floppy_main()
+{
   cli();
-  byte_cnt = 0;
-  byte_mask = 0x80;
-  prepare = true;
+  formatting = false;
   // Leave track at last position...
   // ph_track = 0;
   sector = 0;
+  byte_cnt = 0;
+  byte_mask = 0x80;
+  prepare = true;
   sei();
 
   while (floppy_drive_enabled())
   {
-    // Prepare for writing?
-    if (WRITE_CAPABLE && floppy_write_enable())
-    {
-      init_writing();
+    // Handle writing to floppy operations.
+    // Writing routine is blocking, no read operation nor stepper update is done during write
+    // This assumption is quite reasonable, who would change track while writing?
+    while (WRITE_CAPABLE && floppy_write_enable())
+      floppy_handle_writing();
 
-      uint8_t magstate = floppy_write_in();
+    floppy_update_stepper();
 
-      do
-      {
-        uint8_t new_magstate = floppy_write_in();
-        if (magstate != new_magstate)
-        {
-          write_pinchange();
-          magstate = new_magstate;
-        }
-        if (TCD0.INTFLAGS & TC0_OVFIF_bm)
-        {
-          write_idle();
-        }
-      } while (floppy_write_enable());
-
-      end_writing();
-    }
-
-
-    /* * * Update physical track position * * */
-    uint8_t stp_pos = (Port(FLOPPY_PH).IN & FLOPPY_PH_MASK);
-
-    ofs = ((stp_pos == 0b00001000)
-               ? 3
-               : ((stp_pos == 0b00000100)
-                      ? 2
-                      : ((stp_pos == 0b00000010) ? 1
-                                                 : ((stp_pos == 0b00000001) ? 0 : ofs))));
-    if (ofs != old_ofs)
-    {
-      if (ofs == ((old_ofs + 1) & 0x3))
-        ph_track++;
-      else if (ofs == ((old_ofs - 1) & 0x3))
-        ph_track--;
-
-      old_ofs = ofs;
-
-      // < 0
-      if (ph_track > 70)
-        ph_track = 0;
-      // > fine tracce
-      else if (ph_track > 69)
-        ph_track = 69;
-
-      // DEBUG good old printf debug
-      // debug_printP(PSTR("%x\n\r"), ph_track);
-      // ... do not interrupt a sector reading when changing track
-    }
-
-    if (prepare)
-    {
-      // mute interrupts during update. 0 will be sent
-      cli();
-
-      // Move to the next sector circularly
-      // Sectors does not have a particular alignemnt between track and track.
-      // Then, sector is always incremented
-      sector = ((sector + 1) & 0xf);
-      nic_update_sector(ph_track >> 1, sector);
-      byte_cnt = 0;
-      byte_mask = 0x80;
-      prepare = false;
-
-      sei();
-    }
+    // Read new sector from SD card
+    // Avoid SD card access during formatting operations, it would mess up timings
+    if (prepare && !formatting)
+      floppy_update_sector();
   }
 
   debug_printP(PSTR("Reading done\n\r"));
@@ -417,10 +518,4 @@ void floppy_main()
 
   // Always invalidate sector reading cache after each floppy operation
   sdcard_cache_invalidate();
-
-  byte_cnt = 0;
-  byte_mask = 0x80;
-  ph_track = 0;
-  ofs = 0;
-  old_ofs = 0;
 }

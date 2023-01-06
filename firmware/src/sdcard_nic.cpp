@@ -14,6 +14,8 @@
 
 #define FAT_NIC_ELEMS (150)
 
+/* * * * * * * * * * * * * * *  EXTERN VARIABLES  * * * * * * * * * * * * * * */
+
 // WIP data shared with sdcard_nic for faster access to floppy disk files.
 extern uint32_t fat_addr;
 extern uint32_t sec_per_cluster;
@@ -22,16 +24,14 @@ extern uint32_t dir_addr;
 extern uint32_t data_addr;
 extern uint8_t sector_cache[SDCARD_BLOCK_SIZE + 2];
 
-/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
-
-#define FAT_NIC_ELEMS (150)
-
 /* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
 
 static uint16_t nic_fat[FAT_NIC_ELEMS];
 static bool is_file_selected = false;
 // TODO dummy byte to be sent when reading
 static uint8_t foo = 0xff;
+// Must verify that data is correctly written in SD card
+static bool sdcard_ack_pending = false;
 
 /* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
@@ -152,7 +152,7 @@ bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector)
   /* * * Configure DMA Channel 0 as SPI writer * * */
   // Reset it before initialization (FIXME)
   DMA.CH1.CTRLA = DMA_CH_RESET_bm;
-  // Auto increment RAM address
+  // Do not auto increment RAM address
   DMA.CH1.ADDRCTRL = DMA_CH_DESTDIR_FIXED_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc | DMA_CH_SRCDIR_FIXED_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
   // Write trigger on data register empty
   DMA.CH1.TRIGSRC = DMA_CH_TRIGSRC_USARTC1_DRE_gc;
@@ -203,12 +203,61 @@ uint8_t nic_get_byte(uint16_t offset)
   return sector_cache[offset];
 }
 
-// TODO let the DMA do this
-bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t sector)
+// TODO prepare writing buffer
+void nic_prepare_wrbuf(uint8_t* buffer)
 {
-  uint8_t c;
+  PROGMEM static const uint8_t SYNC_HEADER[] = {
+    0x03, 0xFC, 0xFF, 0x3F, 0xCF, 0xF3, 0xFC, 0xFF, 0x3F, 0xCF, 0xF3, 0xFC
+  };
+  PROGMEM static const uint8_t ADDR_DATA_HDR[] = {
+    0xD5, 0xAA, 0x96, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDE, 0xAA, 0xEB,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xD5, 0xAA, 0xAD
+  };
 
-  // Compute current sector index (0..16*35) FIXME
+  // 22 ffs
+  memset(buffer, 0xFF, 22);
+  buffer += 22;
+
+  // sync header
+  memcpy_P(buffer, SYNC_HEADER, sizeof(SYNC_HEADER));
+  buffer += sizeof(SYNC_HEADER);
+
+  // address field plus data header
+  memcpy_P(buffer, ADDR_DATA_HDR, sizeof(ADDR_DATA_HDR));
+  buffer += sizeof(ADDR_DATA_HDR);
+
+  // Skip data field minus signature, which is in ADDR_DATA_HDR
+  buffer += 349 - 3;
+
+  // 14 ffs
+  memset(buffer, 0xFF, 14);
+  buffer += 14;
+
+  // 96 00s
+  memset(buffer, 0x00, 96);
+  buffer += 96;
+
+  // CRC
+  *buffer++ = 0xFF;
+  *buffer++ = 0xFF;
+
+  // Dummy byte for write check
+  *buffer++ = 0xFF;
+}
+
+// PROGMEM const uint8_t SCRAMBLE[] = {0, 7, 14, 6, 13, 5, 12, 4, 11, 3, 10, 2, 9, 1, 8, 15};
+
+// TODO let the DMA do this
+bool nic_write_sector(uint8_t *buffer, uint8_t track, uint8_t sector)
+{
+  if (track >= 35 || sector >= 16)
+  {
+    debug_printP(PSTR("Irregular t:%d s:%d\n\r"), track, sector);
+  }
+  // debug_printP(PSTR("%d\n\r"), sector);
+  // Compute current sector index (0..16*35)
+  //uint16_t dsk_sector = (uint16_t)track * 16 + pgm_read_byte(SCRAMBLE + sector);
   uint16_t dsk_sector = (uint16_t)track * 16 + sector;
   // Get current SD cluster index to find its address in FAT
   uint8_t sd_cluster = dsk_sector >> sectors_per_cluster2;
@@ -223,76 +272,98 @@ bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t se
   // Convert in bytes
   sd_address *= SDCARD_BLOCK_SIZE;
 
-  sdcard_cs(0);
-  sdcard_command(SD_CMD_WRITE_BLOCK, (data_addr + sd_address));
-
-  write_byte(0xff);
-  write_byte(0xfe);
-  // 22 ffs
-  for (uint8_t i = 0; i < 22; i++)
+  if (sdcard_ack_pending)
   {
-    write_byte(0xff);
+    // wait until data is written to the SD card
+  // Una cosa molto brutta... mi fido che la scrittura sia andata a buon fine...
+  // Non posso far altro
+#if 0
+    if ((read_byte() & 0x1F) != 0x05)
+      debug_printP(PSTR("Fail wrt t:%d s:%d f:%x\n\r"), track, sector, foo);
+    else
+#endif
+      // wait until data is written to the SD card
+      while(read_byte() == 0x00)
+        ;
+    sdcard_ack_pending = false;
   }
 
-  // sync header
-  write_byte(0x03);
-  write_byte(0xfc);
-  write_byte(0xff);
-  write_byte(0x3f);
-  write_byte(0xcf);
-  write_byte(0xf3);
-  write_byte(0xfc);
-  write_byte(0xff);
-  write_byte(0x3f);
-  write_byte(0xcf);
-  write_byte(0xf3);
-  write_byte(0xfc);
+  // Send write buffer command
+  sdcard_command(SD_CMD_WRITE_BLOCK, (data_addr + sd_address));
+  // Start data block
+  write_byte(SD_STATE_START_DATA_BLOCK);
 
-  // address header
-  write_byte(0xD5);
-  write_byte(0xAA);
-  write_byte(0x96);
-  write_byte((volume >> 1) | 0xAA);
-  write_byte(volume | 0xAA);
-  write_byte((track >> 1) | 0xAA);
-  write_byte(track | 0xAA);
-  write_byte((sector >> 1) | 0xAA);
-  write_byte(sector | 0xAA);
-  c = (volume ^ track ^ sector);
-  write_byte((c >> 1) | 0xAA);
-  write_byte(c | 0xAA);
-  write_byte(0xDE);
-  write_byte(0xAA);
-  write_byte(0xEB);
+  /* * * Configure DMA Channel 0 as SPI reader * * */
+  // Reset it before initialization (FIXME)
+  DMA.CH0.CTRLA = DMA_CH_RESET_bm;
+  // Do not auto increment destination address
+  DMA.CH0.ADDRCTRL = DMA_CH_DESTDIR_FIXED_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc | DMA_CH_SRCDIR_FIXED_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
+  // Read trigger on RX completed
+  DMA.CH0.TRIGSRC = DMA_CH_TRIGSRC_USARTC1_RXC_gc;
+  // Read a whole sector + 2 byte CRC
+  DMA.CH0.TRFCNT = SDCARD_BLOCK_SIZE + 2 + 1;
+  DMA.CH0.SRCADDR0 = ((uint16_t)&USARTC1.DATA) & 0xFF;
+  DMA.CH0.SRCADDR1 = ((uint16_t)&USARTC1.DATA) >> 8;
+  DMA.CH0.SRCADDR2 = 0;
+  DMA.CH0.DESTADDR0 = ((uint16_t)foo) & 0xFF;
+  DMA.CH0.DESTADDR1 = ((uint16_t)foo) >> 8;
+  DMA.CH0.DESTADDR2 = 0;
+  // Disable all interrupts (FIXME)
+  // DMA_CH_ERRINTLVL_MED_gc | DMA_CH_TRNINTLVL_MED_gc;
+  DMA.CH0.CTRLB = 0;
 
-  // sync header
-  write_byte(0xff);
-  write_byte(0xff);
-  write_byte(0xff);
-  write_byte(0xff);
-  write_byte(0xff);
+  /* * * Configure DMA Channel 0 as SPI writer * * */
+  // Reset it before initialization (FIXME)
+  DMA.CH1.CTRLA = DMA_CH_RESET_bm;
+  // Auto increment RAM address
+  DMA.CH1.ADDRCTRL = DMA_CH_DESTDIR_FIXED_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc | DMA_CH_SRCDIR_INC_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
+  // Write trigger on data register empty
+  DMA.CH1.TRIGSRC = DMA_CH_TRIGSRC_USARTC1_DRE_gc;
+  // Write a whole sector + 2 byte CRC
+  DMA.CH1.TRFCNT = SDCARD_BLOCK_SIZE + 2 + 1;
+  // Write dummy byte (FIXME, will be a fixed location of the write buffer)
+  DMA.CH1.SRCADDR0 = ((uint16_t)buffer) & 0xFF;
+  DMA.CH1.SRCADDR1 = ((uint16_t)buffer) >> 8;
+  DMA.CH1.SRCADDR2 = 0;
+  DMA.CH1.DESTADDR0 = ((uint16_t)&USARTC1.DATA) & 0xFF;
+  DMA.CH1.DESTADDR1 = ((uint16_t)&USARTC1.DATA) >> 8;
+  DMA.CH1.DESTADDR2 = 0;
+  // Disable all interrupts (FIXME)
+  // DMA_CH_ERRINTLVL_MED_gc | DMA_CH_TRNINTLVL_MED_gc;
+  DMA.CH1.CTRLB = 0;
 
-  // Put actual data
-  for (uint16_t i = 0; i < 349; i++)
-    write_byte(buffer[i]);
+  // Flag, remember to ack writing at the end
+  sdcard_ack_pending = true;
 
-  // 14 ffs
-  for (uint8_t i = 0; i < 14; i++)
-    write_byte(0xff);
+  // Enable reader first...
+  DMA.CH0.CTRLA = DMA_CH_ENABLE_bm | DMA_CH_SINGLE_bm | DMA_CH_BURSTLEN_1BYTE_gc;
+  // ...then writer
+  DMA.CH1.CTRLA = DMA_CH_ENABLE_bm | DMA_CH_SINGLE_bm | DMA_CH_BURSTLEN_1BYTE_gc;
 
-  // 96 00s
-  for (uint16_t i = 0; i < 96; i++)
-    write_byte(0x00);
+  return true;
+}
 
-  write_byte(0xff);
-  write_byte(0xff);
+bool sdcard_nic_writeback_ended()
+{
+  // Si potrebbe anche usare l'Interrupt Flag del DMA
+  if (!sdcard_ack_pending)
+    return true;
 
-  read_byte();
+  if (DMA.STATUS & (DMA_CH0BUSY_bm | DMA_CH1BUSY_bm))
+    return false;
 
   // wait until data is written to the SD card
-  sdcard_wait_for_data(0);
-
-  sdcard_cs(1);
+  // Una cosa molto brutta... mi fido che la scrittura sia andata a buon fine...
+  // Non posso far altro
+#if 0
+  if ((read_byte() & 0x1F) != 0x05)
+    debug_printP(PSTR("Fail finalizing\n\r"));
+  else
+#endif
+    // wait until data is written to the SD card
+    while(read_byte() == 0x00)
+      ;
+  sdcard_ack_pending = false;
 
   return true;
 }
