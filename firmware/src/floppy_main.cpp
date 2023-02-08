@@ -52,9 +52,7 @@ static void irq_reading();
 static uint8_t floppy_read_data();
 static void init_writing();
 static void end_writing();
-static void check_data();
-static void write_pinchange();
-static void write_idle();
+static void write_bit(bool bit);
 static void write_back();
 
 /* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
@@ -175,10 +173,13 @@ static void end_writing()
   sei();
 }
 
-static void check_data()
+static void write_bit(bool bit)
 {
   static uint8_t* write_ptr;
   static uint16_t write_len = 0;
+
+  write_data <<= 1;
+  write_data |= (bit ? 0x01 : 0x00);
 
   if (!synced)
   {
@@ -187,15 +188,20 @@ static void check_data()
       return;
 
     synced = true;
-    // TODO in write init, remember to initialize:
-    // write_bitcount = 0
-    // write_status = SYNC_D5
+    write_bitcount = 8;
+    write_status = SYNC_D5;
+    return;
   }
-  else
+
+  if (write_bitcount > 0)
     write_bitcount--;
 
   if (write_bitcount == 0)
   {
+    // Try re-aligment if MSb is not set
+    if (!(write_data & 0x80))
+      return;
+
     write_bitcount = 8;
     switch (write_status)
     {
@@ -239,7 +245,7 @@ static void check_data()
         {
           synced = false;
           write_status = SYNC_D5;
-          write_bitcount = 0;
+          write_bitcount = 8;
         }
         break;
 
@@ -254,31 +260,11 @@ static void check_data()
           write_back();
           synced = false;
           write_status = SYNC_D5;
-          write_bitcount = 0;
+          write_bitcount = 8;
         }
         break;
     }
   }
-}
-
-static void write_pinchange()
-{
-  // disable match
-  // TCD0.CCB = 0xFFFF;
-  write_data <<= 1;
-  write_data |= 1;
-  TCD0.CNT = 0x0000;
-  TCD0.INTFLAGS = TC0_OVFIF_bm;
-  check_data();
-}
-
-static void write_idle()
-{
-  // disable match
-  // TCD0.CCB = 0xFFFF;
-  write_data <<= 1;
-  TCD0.INTFLAGS = TC0_OVFIF_bm;
-  check_data();
 }
 
 // write back writeData into the SD card
@@ -420,14 +406,22 @@ static void floppy_handle_writing()
   do
   {
     uint8_t new_magstate = floppy_write_in();
+
+    // Write one
     if (magstate != new_magstate)
     {
-      write_pinchange();
+      TCD0.CNT = 0x0000;
+      TCD0.INTFLAGS = TC0_OVFIF_bm;
       magstate = new_magstate;
+      write_bit(1);
     }
-    if (TCD0.INTFLAGS & TC0_OVFIF_bm)
+    // Write zero
+    else if (TCD0.INTFLAGS & TC0_OVFIF_bm)
     {
-      write_idle();
+      // disable match
+      // TCD0.CCB = 0xFFFF;
+      TCD0.INTFLAGS = TC0_OVFIF_bm;
+      write_bit(0);
     }
   } while (floppy_write_enable());
 
