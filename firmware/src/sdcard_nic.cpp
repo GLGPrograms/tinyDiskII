@@ -203,6 +203,11 @@ uint8_t nic_get_byte(uint16_t offset)
   return sector_cache[offset];
 }
 
+uint8_t nic_current_volume()
+{
+  return ((sector_cache[0x25] & 0x55) << 1) | (sector_cache[0x26] & 0x55);
+}
+
 // TODO prepare writing buffer
 void nic_prepare_wrbuf(uint8_t* buffer)
 {

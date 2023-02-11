@@ -21,6 +21,7 @@ bool nic_file_selected();
 void nic_unselect_file();
 bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector);
 uint8_t nic_get_byte(uint16_t offset);
+uint8_t nic_current_volume();
 void nic_abort_read(uint16_t bits);
 void nic_prepare_wrbuf(uint8_t* buffer);
 bool nic_write_sector(uint8_t *buffer, uint8_t track, uint8_t sector);

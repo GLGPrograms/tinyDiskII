@@ -20,8 +20,6 @@
 #define WRITING_BUFFER_SIZE (512 + 2 + 1)
 // Size in byte of valid data in .NIC file
 #define NIC_SIZE (402)
-// Volume number is always the same
-#define volume (0xFE)
 
 // IO defines
 #define FLOPPY_DISK_WRITE      D, 0
@@ -288,6 +286,7 @@ static void write_back()
   // inside buffer with physical track and current sector
   else
   {
+    uint8_t volume = nic_current_volume();
     uint8_t crc = volume ^ wr_track ^ wr_sector;
     write_buffer[0x25] = (volume >> 1) | 0xAA;
     write_buffer[0x26] = volume | 0xAA;
