@@ -360,9 +360,11 @@ bool sdcard_nic_writeback_ended()
     debug_printP(PSTR("Fail finalizing\n\r"));
   else
 #endif
-    // wait until data is written to the SD card
-    while(read_byte() == 0x00)
-      ;
+
+  // wait until data is written to the SD card
+  while(read_byte() == 0x00)
+    ;
+
   sdcard_ack_pending = false;
 
   return true;
