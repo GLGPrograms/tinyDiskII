@@ -1,3 +1,4 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
 #include "sdcard.h"
 #include "sdcard_gpio.h"
 
@@ -8,7 +9,12 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * * * INTERNAL TYPES * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  EXTERN VARIABLES  * * * * * * * * * * * * * * */
+
+// Shared with sdcard_fat for sector caching
+extern uint8_t sector_cache[SDCARD_BLOCK_SIZE];
+
+/* * * * * * * * * * * * * * *  PRIVATE TYPEDEFS  * * * * * * * * * * * * * * */
 
 enum sdcard_type_t
 {
@@ -17,23 +23,22 @@ enum sdcard_type_t
   SD_SDHC
 };
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
+
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
 
 static sdcard_type_t type = SD_SD1;
 
 // Index of currently cached sector
 static uint32_t sector_cache_idx = 0x00;
 
-/* * * * * * * * * * * * *  SHARED OR EXTERN MEMBERS  * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL VARIABLES  * * * * * * * * * * * * * * */
 
 // Function pointers for byte-oriented SD-card operations
 uint8_t (*read_byte)() = NULL;
 void (*write_byte)(uint8_t) = NULL;
 
-// Shared with sdcard_fat for sector caching
-extern uint8_t sector_cache[SDCARD_BLOCK_SIZE];
-
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 void sdcard_init()
 {

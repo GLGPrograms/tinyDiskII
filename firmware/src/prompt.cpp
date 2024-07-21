@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,14 +24,7 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * * * INTERNAL TYPES * * * * * * * * * * * * * * * */
-
-struct prompt_commands_t {
-  const char* cmd;
-  void (*do_cmd)(const char *arg, size_t len);
-};
-
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
 #define DEBUG_UART C, 0
 #define UART_BAUDRATE  (115200)
@@ -46,14 +41,42 @@ struct prompt_commands_t {
 // Send echoes while writing in prompt
 #define ECHO 1
 
+/* * * * * * * * * * * * * * *  PRIVATE TYPEDEFS  * * * * * * * * * * * * * * */
+
+struct prompt_commands_t {
+  const char* cmd;
+  void (*do_cmd)(const char *arg, size_t len);
+};
+
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
+
+static void putChar(char c);
+static void do_cwd(const char *arg, size_t len);
+static void do_up(const char *arg, size_t len);
+static void do_lst(const char *arg, size_t len);
+static void do_set(const char *arg, size_t len);
+static void do_rem(const char *arg, size_t len);
+static void do_init(const char *arg, size_t len);
+
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
+
 // Buffers for received data
 static char buffer[BUFFER_MAXSIZE];
 static volatile uint8_t size = 0;
 static volatile uint8_t ready = 0;
 // Buffer for printf routines
 static char printf_buf[BUFFER_MAXSIZE];
+static const prompt_commands_t prompt_commands[] = {
+  {"CWD", do_cwd},
+  {"UP", do_up},
+  {"LST", do_lst},
+  {"SET", do_set},
+  {"REM", do_rem},
+  {"INIT", do_init},
+  {NULL, NULL}
+};
 
-/* * * * * * * * * * * * * * PUBLIC IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
 /* - - - - - - - - - - - - - - - print routines - - - - - - - - - - - - - - - */
 
@@ -145,17 +168,7 @@ static void do_init(const char *arg __attribute__((unused)), size_t len __attrib
   }
 }
 
-static const prompt_commands_t prompt_commands[] = {
-  {"CWD", do_cwd},
-  {"UP", do_up},
-  {"LST", do_lst},
-  {"SET", do_set},
-  {"REM", do_rem},
-  {"INIT", do_init},
-  {NULL, NULL}
-};
-
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 void prompt_init()
 {

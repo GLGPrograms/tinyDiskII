@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "oled_lcd.h"
 
 #include <avr/pgmspace.h>
@@ -10,7 +12,19 @@
 
 #include "util/port.h"
 
-/* * * * * * * * * * * * * * * * INTERNAL TYPES * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
+
+// 7 bit slave-adress without r/w-bit
+#define LCD_I2C_ADR (0x78 >> 1)
+#define LCD_DISP_OFF 0xAE
+#define LCD_DISP_ON 0xAF
+#define LCD_RES_PIN E, 2
+
+// Display size in pixels
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGHT 64
+
+/* * * * * * * * * * * * * * *  PRIVATE TYPEDEFS  * * * * * * * * * * * * * * */
 
 struct cursor_pos_str
 {
@@ -24,17 +38,12 @@ enum
   INVERT_ON = 0xFF
 };
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
 
-// 7 bit slave-adress without r/w-bit
-#define LCD_I2C_ADR (0x78 >> 1)
-#define LCD_DISP_OFF 0xAE
-#define LCD_DISP_ON 0xAF
-#define LCD_RES_PIN E, 2
+static inline void oled_command_byte(const uint8_t &data);
+static inline void oled_byte(const uint8_t &data);
 
-// Display size in pixels
-#define DISPLAY_WIDTH 128
-#define DISPLAY_HEIGHT 64
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
 
 // Cursor position buffer
 static cursor_pos_str cursor_pos = {0, 0};
@@ -64,7 +73,7 @@ static const uint8_t init_sequence[] PROGMEM = {
     0xAF          // Turn on display
 };
 
-/* * * * * * * * * * * * * * PUBLIC IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
 static inline void oled_command_byte(const uint8_t &data)
 {
@@ -76,7 +85,7 @@ static inline void oled_byte(const uint8_t &data)
   oled_data(&data, 1);
 }
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 bool oled_init()
 {

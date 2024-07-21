@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "sdcard.h"
 
 #include "sdcard_fat.h"
@@ -7,7 +9,7 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * * * INTERNAL TYPES * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  PRIVATE TYPEDEFS  * * * * * * * * * * * * * * */
 
 enum fat_error_t
 {
@@ -21,7 +23,7 @@ enum fat_error_t
   FAT_ERROR_FILE_NOT_FOUND,
 };
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
 
 #if 0
 static void to_fat_filename(char *fat_filename, const char *filename);
@@ -29,9 +31,11 @@ static void to_fat_filename(char *fat_filename, const char *filename);
 static void from_fat_filename(char *filename, const char *fat_filename);
 static fat_error_t sdcard_fat_find_boot_sector(uint32_t sector);
 
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
+
 static fat_type_t fat_type = FAT_FAT_UNKNOWN;
 
-/* * * * * * * * * * * * *  SHARED OR EXTERN MEMBERS  * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL VARIABLES  * * * * * * * * * * * * * * */
 
 // WIP data shared with sdcard_nic for faster access to floppy disk files.
 // Address of the first FAT table
@@ -50,7 +54,7 @@ uint32_t data_addr = 0;
 // Data shared with sdcard.c for sector caching
 uint8_t sector_cache[SDCARD_BLOCK_SIZE];
 
-/* * * * * * * * * * * * * * PUBLIC IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
 // Currently unused
 #if 0
@@ -125,7 +129,7 @@ static fat_error_t sdcard_fat_find_boot_sector(uint32_t sector_addr)
   return FAT_ERROR_NO_FAT;
 }
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 bool sdcard_fat_init()
 {

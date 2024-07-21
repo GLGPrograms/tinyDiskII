@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "sdcard_nic.h"
 
 #include <string.h>
@@ -8,14 +10,7 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
-
-#define FAT_NIC_ELEMS (150)
-
-static uint16_t nic_fat[FAT_NIC_ELEMS];
-static bool is_file_selected = false;
-
-/* * * * * * * * * * * * *  SHARED OR EXTERN MEMBERS  * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  EXTERN VARIABLES  * * * * * * * * * * * * * * */
 
 // WIP data shared with sdcard_nic for faster access to floppy disk files.
 extern uint32_t fat_addr;
@@ -24,7 +19,16 @@ extern uint8_t sectors_per_cluster2;
 extern uint32_t dir_addr;
 extern uint32_t data_addr;
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
+
+#define FAT_NIC_ELEMS (150)
+
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
+
+static uint16_t nic_fat[FAT_NIC_ELEMS];
+static bool is_file_selected = false;
+
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 bool nic_build_fat(uint16_t fat_entry)
 {

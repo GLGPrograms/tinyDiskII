@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "floppy_main.h"
 
 #include <avr/interrupt.h>
@@ -12,7 +14,7 @@
 
 #include "debug.h"
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
 // Writing buffer size
 #define WRITING_BUFFER_SIZE (350)
@@ -31,6 +33,23 @@
 
 #define WRITE_CAPABLE (true)
 
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
+
+// Reading routines
+static void abort_reading();
+static void irq_reading();
+
+// Writing routines
+static uint8_t floppy_read_data();
+static void init_writing();
+static void end_writing();
+static void check_data();
+static void write_pinchange();
+static void write_idle();
+static void write_back(void);
+
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
+
 // DISK II status
 // Formatting operation has been detected
 static bool formatting = false;
@@ -47,20 +66,7 @@ static bool synced = false;
 // Update sector request
 static volatile bool prepare = true;
 
-// Reading routines
-static void abort_reading();
-static void irq_reading();
-
-// Writing routines
-static uint8_t floppy_read_data();
-static void init_writing();
-static void end_writing();
-static void check_data();
-static void write_pinchange();
-static void write_idle();
-static void write_back(void);
-
-/* * * * * * * * * * * * * * PUBLIC IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
 /* - - - - - - - - - - - - - - Low-level methods  - - - - - - - - - - - - - - */
 
@@ -221,7 +227,7 @@ static void write_back(void)
   }
 }
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 void floppy_init()
 {

@@ -1,3 +1,5 @@
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "oled_gui.h"
 
 #include <avr/pgmspace.h>
@@ -7,7 +9,7 @@
 #include "oled_lcd.h"
 #include "std_font.h"
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
 // Number of lines in yellow area
 #define YELLOW_H (2)
@@ -23,7 +25,14 @@
 #define ERROR_W (MAX_X - 2)
 #define ERROR_H (BLUE_H - 2)
 
-const uint8_t borders[][6] PROGMEM = {
+
+/* * * * * * * * * * * * * STATIC FUNCTION PROTOTYPES * * * * * * * * * * * * */
+
+static void draw_borders();
+
+/* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
+
+static const uint8_t borders[][6] PROGMEM = {
     {0x00, 0xC0, 0x60, 0x30, 0x18, 0x08}, // Top Left
     {0x08, 0x08, 0x08, 0x08, 0x08, 0x08}, // Top
     {0x08, 0x18, 0x30, 0x60, 0xC0, 0x80}, // Top Right
@@ -34,9 +43,7 @@ const uint8_t borders[][6] PROGMEM = {
     {0x00, 0xFF, 0x00, 0x00, 0x00, 0x00}, // Left
 };
 
-static void draw_borders();
-
-/* * * * * * * * * * * * * * PUBLIC IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  STATIC FUNCTIONS  * * * * * * * * * * * * * * */
 
 static void draw_borders()
 {
@@ -79,7 +86,7 @@ static void draw_borders()
   }
 }
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 /* - - - - - - - - - - - - - - Generic methods  - - - - - - - - - - - - - - - */
 

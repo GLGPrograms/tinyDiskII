@@ -10,6 +10,8 @@
  *
  */
 
+/* * * * * * * * * * * * * * * * *  INCLUDES  * * * * * * * * * * * * * * * * */
+
 #include "i2c.h"
 
 #include <avr/io.h>
@@ -17,7 +19,7 @@
 #include "i2c.h"
 #include "util/port.h"
 
-/* * * * * * * * * * * * * * * * PUBLIC MEMBERS * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * PRIVATE MACROS AND DEFINES * * * * * * * * * * * * */
 
 // Port for I2C interface
 #define TWI_PORT E
@@ -26,7 +28,7 @@
 // Baudrate calculation
 #define BAUDSETTING ((F_CPU / (2 * F_I2C)) - 5)
 
-/* * * * * * * * * * * * * * SHARED IMPLEMENTATIONS * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */
 
 void i2c_init(void)
 {
