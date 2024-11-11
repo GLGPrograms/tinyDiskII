@@ -72,12 +72,15 @@ static void cli_mainloop()
   {
     prompt_main();
 
+    // Mute Apple II interface, we are doing some SD debug here
+#if 0
     // Do nothing if drive is disabled
     if (floppy_drive_enabled() && nic_file_selected())
     {
       debug_printP(PSTR("Reading enabled\n\r"));
       floppy_main();
     }
+#endif
   }
 }
 
