@@ -58,6 +58,9 @@ static void do_set(const char *arg, size_t len);
 static void do_rem(const char *arg, size_t len);
 static void do_init(const char *arg, size_t len);
 
+static void do_fat(const char *arg, size_t len);
+static void do_info(const char *arg, size_t len);
+
 /* * * * * * * * * * * * * * *  STATIC VARIABLES  * * * * * * * * * * * * * * */
 
 // Buffers for received data
@@ -73,6 +76,9 @@ static const prompt_commands_t prompt_commands[] = {
   {"SET", do_set},
   {"REM", do_rem},
   {"INIT", do_init},
+  // Debug commands
+  {"FAT", do_fat}, // Print FAT table for a selected file. No arguments
+  {"INFO", do_info}, // Dump sector info for given sector and track passed as argument
   {NULL, NULL}
 };
 
@@ -166,6 +172,37 @@ static void do_init(const char *arg __attribute__((unused)), size_t len __attrib
 #endif
     debug_printP(PSTR("Failed initialization\n\r"));
   }
+}
+
+static void do_fat(const char *arg __attribute__((unused)), size_t len __attribute__((unused))) {
+  if (!nic_file_selected()) {
+    debug_printP(PSTR("No file selected\n\r"));
+    return;
+  }
+
+  uint16_t upto = 0;
+
+  if (len > 0)
+    upto = strtol(arg, NULL, 10);
+
+  debug_dump_fat(upto);
+}
+
+static void do_info(const char *arg, size_t) {
+  if (!nic_file_selected()) {
+    debug_printP(PSTR("No file selected\n\r"));
+    return;
+  }
+
+  char *ptr;
+  if (*arg == '\0')
+    return;
+  uint8_t track = strtol(arg, &ptr, 10);
+  if (*ptr == '\0')
+    return;
+  uint8_t sector = strtol(ptr, &ptr, 10);
+
+  debug_dump_sect_info(track, sector);
 }
 
 /* * * * * * * * * * * * * * *  GLOBAL FUNCTIONS  * * * * * * * * * * * * * * */

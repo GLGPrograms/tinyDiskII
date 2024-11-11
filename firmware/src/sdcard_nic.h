@@ -24,4 +24,7 @@ uint8_t nic_get_bit();
 void nic_abort_read(uint16_t bits);
 bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t sector);
 
+void debug_dump_fat(uint16_t upto);
+void debug_dump_sect_info(uint8_t track, uint8_t sector);
+
 #endif // SRC_SDCARD_NIC_H_
