@@ -217,3 +217,53 @@ bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t se
 
   return true;
 }
+
+void debug_dump_fat(uint16_t upto) {
+  for (uint8_t i = 0; i < upto; i++) {
+    debug_printP(PSTR("[%x]: %x\n\r"), i, nic_fat[i]);
+  }
+}
+
+void debug_dump_sect_info(uint8_t track, uint8_t sector) {
+  // Compute current disk index expressed in sectors (0..16*35)
+  uint16_t dsk_index = (uint16_t)track * 16 + sector;
+  // Get current SD cluster index to find its address in FAT
+  uint8_t sd_cluster = dsk_index >> sectors_per_cluster2;
+  // Bytes per sector is assumed to be 512
+  uint16_t sd_sector_offset = dsk_index % 4;
+
+  debug_printP(PSTR("dsk_index: %x\n\r"), dsk_index);
+  debug_printP(PSTR("sd_cluster: %x\n\r"), sd_cluster);
+  debug_printP(PSTR("sd_sector_offset: %x\n\r"), sd_sector_offset);
+
+  // Check if FAT entry is valid
+  if (nic_fat[sd_cluster] < 2) {
+    debug_printP(PSTR("invalid fat entry: [%x]\n\r"), sd_cluster);
+    return;
+  }
+
+  // Get cluster from reordered FAT table and convert in sectors
+  uint32_t sd_address = nic_fat[sd_cluster] - 2;
+  sd_address <<= sectors_per_cluster2;
+  // Add sector offset
+  sd_address += sd_sector_offset;
+  // Convert in bytes
+  sd_address *= SDCARD_BLOCK_SIZE;
+  // Base address is data_addr
+  sd_address += data_addr;
+
+  debug_printP(PSTR("sd_address: %lx\n\r"), sd_address);
+
+  // Check if valid address field in nic
+  uint8_t tmp[3];
+  sdcard_read_offset(tmp, sd_address + 0x22, 3);
+  if (tmp[0] != 0xD5 || tmp[1] != 0xAA || tmp[2] != 0x96) {
+    debug_printP(PSTR("invalid addrfield %x,%x,%x\n\r"), tmp[0], tmp[1], tmp[2]);
+  }
+  // Take disk track number, decode and print it
+  sdcard_read_offset(tmp, sd_address + 0x27, 2);
+  debug_printP(PSTR("track %x\n\r"), (((tmp[0] & 0x55) << 1) | (tmp[1] & 0x55)));
+  // Take disk sector number, decode and print it
+  sdcard_read_offset(tmp, sd_address + 0x29, 2);
+  debug_printP(PSTR("sector %x\n\r"), (((tmp[0] & 0x55) << 1) | (tmp[1] & 0x55)));
+}
