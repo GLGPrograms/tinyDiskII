@@ -78,8 +78,9 @@ bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector)
   uint16_t dsk_index = (uint16_t)dsk_trk * 16 + dsk_sector;
   // Get current SD cluster index to find its address in FAT
   uint8_t sd_cluster = dsk_index >> sectors_per_cluster2;
-  // Bytes per sector is assumed to be 512
-  uint16_t sd_sector_offset = dsk_index % 4;
+  // Compute the .nic sector offset within a FAT cluster
+  uint16_t mask = (1 << sectors_per_cluster2) - 1;
+  uint16_t sd_sector_offset = dsk_index & mask;
 
   // Check if FAT entry is valid
   if (nic_fat[sd_cluster] < 2)
@@ -128,11 +129,12 @@ bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t se
   uint8_t c;
 
   // Compute current sector index (0..16*35) FIXME
-  uint16_t dsk_sector = (uint16_t)track * 16 + sector;
+  uint16_t dsk_index = (uint16_t)track * 16 + sector;
   // Get current SD cluster index to find its address in FAT
-  uint8_t sd_cluster = dsk_sector >> sectors_per_cluster2;
-  // Bytes per sector is assumed to be 512
-  uint16_t sd_sector_offset = dsk_sector % 4;
+  uint8_t sd_cluster = dsk_index >> sectors_per_cluster2;
+  // Compute the .nic sector offset within a FAT cluster
+  uint16_t mask = (1 << sectors_per_cluster2) - 1;
+  uint16_t sd_sector_offset = dsk_index & mask;
 
   // Get cluster from reordered FAT table and convert in sectors
   uint32_t sd_address = nic_fat[sd_cluster] - 2;
@@ -229,8 +231,9 @@ void debug_dump_sect_info(uint8_t track, uint8_t sector) {
   uint16_t dsk_index = (uint16_t)track * 16 + sector;
   // Get current SD cluster index to find its address in FAT
   uint8_t sd_cluster = dsk_index >> sectors_per_cluster2;
-  // Bytes per sector is assumed to be 512
-  uint16_t sd_sector_offset = dsk_index % 4;
+  // Compute the .nic sector offset within a FAT cluster
+  uint16_t mask = (1 << sectors_per_cluster2) - 1;
+  uint16_t sd_sector_offset = dsk_index & mask;
 
   debug_printP(PSTR("dsk_index: %x\n\r"), dsk_index);
   debug_printP(PSTR("sd_cluster: %x\n\r"), sd_cluster);
