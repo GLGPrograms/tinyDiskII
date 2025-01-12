@@ -97,7 +97,7 @@ bool nic_update_sector(uint8_t dsk_trk, uint8_t dsk_sector)
   sdcard_cs(0);
   uint8_t ret = 0;
   ret |= sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE);
-  ret |= sdcard_command(SD_CMD_READ_SINGLE_BLOCK, data_addr + sd_address);
+  ret |= sdcard_command(SD_CMD_READ_SINGLE_BLOCK, addressToBlock(data_addr + sd_address));
   ret |= (sdcard_wait_for_data(0) != SD_STATE_START_DATA_BLOCK);
   sdcard_cs(1);
 
@@ -145,7 +145,7 @@ bool nic_write_sector(uint8_t *buffer, uint8_t volume, uint8_t track, uint8_t se
   sd_address *= SDCARD_BLOCK_SIZE;
 
   sdcard_cs(0);
-  sdcard_command(SD_CMD_WRITE_BLOCK, (data_addr + sd_address));
+  sdcard_command(SD_CMD_WRITE_BLOCK, addressToBlock(data_addr + sd_address));
 
   write_byte(0xff);
   write_byte(0xfe);
