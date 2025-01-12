@@ -162,6 +162,12 @@ bool sdcard_read_data(uint8_t *data, uint16_t size)
   return true;
 }
 
+uint32_t addressToBlock(uint32_t address) {
+  if (type == SD_SDHC)
+    return address / SDCARD_BLOCK_SIZE;
+  return address;
+}
+
 /* - - - - - - - - - - - - - High-level methods - - - - - - - - - - - - - - - */
 
 bool sdcard_card_init()
@@ -293,7 +299,7 @@ bool sdcard_read_offset(void *data, uint32_t offset, size_t len)
     sdcard_cs(0);
     if (sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE) != 0)
       goto fail;
-    if (sdcard_command(SD_CMD_READ_SINGLE_BLOCK, (offset / SDCARD_BLOCK_SIZE) * SDCARD_BLOCK_SIZE) != 0)
+    if (sdcard_command(SD_CMD_READ_SINGLE_BLOCK, addressToBlock((offset / SDCARD_BLOCK_SIZE) * SDCARD_BLOCK_SIZE)) != 0)
       goto fail;
     ret = sdcard_read_data((uint8_t*)sector_cache, SDCARD_BLOCK_SIZE);
 
