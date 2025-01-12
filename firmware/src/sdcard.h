@@ -82,6 +82,7 @@ bool sdcard_wait_for_astatus(uint8_t command, uint32_t arg, uint8_t status, uint
 uint8_t sdcard_wait_for_data(uint16_t timeout);
 uint8_t sdcard_command(uint8_t command, uint32_t argument);
 uint8_t sdcard_acommand(uint8_t command, uint32_t argument);
+uint32_t addressToBlock(uint32_t address);
 
 // Initialization methods
 

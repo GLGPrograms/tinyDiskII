@@ -162,6 +162,12 @@ bool sdcard_read_data(uint8_t *data, uint16_t size)
   return true;
 }
 
+uint32_t addressToBlock(uint32_t address) {
+  if (type == SD_SDHC)
+    return address / SDCARD_BLOCK_SIZE;
+  return address;
+}
+
 /* - - - - - - - - - - - - - High-level methods - - - - - - - - - - - - - - - */
 
 bool sdcard_card_init()
@@ -205,7 +211,7 @@ bool sdcard_card_init()
     // Check the test pattern.
     if (read_byte() != 0xaa)
       goto failure;
-    debug_printP(PSTR("SDv2\n\r"));
+    debug_printP(PSTR("SDv2 or SDHC\n\r"));
     type = SD_SD2;
   }
 
@@ -232,6 +238,22 @@ bool sdcard_card_init()
     if (sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE))
       goto failure;
   }
+
+  debug_printP(PSTR("SDCard type: "));
+  switch(type) {
+    case SD_SD1:
+      debug_printP(PSTR("SD1\n\r"));
+      break;
+    case SD_SD2:
+      debug_printP(PSTR("SD2\n\r"));
+      break;
+    case SD_SDHC:
+      debug_printP(PSTR("SDHC\n\r"));
+      break;
+    default:
+      debug_printP(PSTR("unknown"));
+  }
+  debug_printP(PSTR("\n\r"));
 
   // Now, higher speed may be used
   sdcard_set_mode(SPI, 1);
@@ -277,7 +299,7 @@ bool sdcard_read_offset(void *data, uint32_t offset, size_t len)
     sdcard_cs(0);
     if (sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE) != 0)
       goto fail;
-    if (sdcard_command(SD_CMD_READ_SINGLE_BLOCK, (offset / SDCARD_BLOCK_SIZE) * SDCARD_BLOCK_SIZE) != 0)
+    if (sdcard_command(SD_CMD_READ_SINGLE_BLOCK, addressToBlock((offset / SDCARD_BLOCK_SIZE) * SDCARD_BLOCK_SIZE)) != 0)
       goto fail;
     ret = sdcard_read_data((uint8_t*)sector_cache, SDCARD_BLOCK_SIZE);
 
