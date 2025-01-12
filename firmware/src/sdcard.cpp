@@ -205,7 +205,7 @@ bool sdcard_card_init()
     // Check the test pattern.
     if (read_byte() != 0xaa)
       goto failure;
-    debug_printP(PSTR("SDv2\n\r"));
+    debug_printP(PSTR("SDv2 or SDHC\n\r"));
     type = SD_SD2;
   }
 
@@ -232,6 +232,22 @@ bool sdcard_card_init()
     if (sdcard_command(SD_CMD_SET_BLOCKLEN, SDCARD_BLOCK_SIZE))
       goto failure;
   }
+
+  debug_printP(PSTR("SDCard type: "));
+  switch(type) {
+    case SD_SD1:
+      debug_printP(PSTR("SD1\n\r"));
+      break;
+    case SD_SD2:
+      debug_printP(PSTR("SD2\n\r"));
+      break;
+    case SD_SDHC:
+      debug_printP(PSTR("SDHC\n\r"));
+      break;
+    default:
+      debug_printP(PSTR("unknown"));
+  }
+  debug_printP(PSTR("\n\r"));
 
   // Now, higher speed may be used
   sdcard_set_mode(SPI, 1);
