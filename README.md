@@ -1,4 +1,5 @@
 # tinyDiskII
+
 Homemade floppy disk emulator for Apple II series computers
 
 > :warning: **Work in progress**: read carefully the README before trying to reproduce this project!
@@ -32,8 +33,7 @@ Floppy formatting is currently not supported, but it is currently under develope
 | U7                                            |      0.96" OLED I2C       |      7-pin model       |
 | U10                                           |         AP1117-33         |  3v3 linear regulator  |
 
-
-### Do Not Place, reserved for future implementations:
+### Do Not Place, reserved for future implementations
 
 | Reference(s) |        Feature         |
 | :----------- | :--------------------: |
@@ -60,7 +60,7 @@ Output binary will be generated as `/firmware/output/tinyDiskII.hex`.
 In `/firmware/tests` there are some unit tests that can run on host system.
 They can be compiled and executed with:
 
-```
+```bash
 cd firmware/tests
 cmake -B build .
 cd build
@@ -68,17 +68,36 @@ cmake --build .
 ./tinyDiskII-tests
 ```
 
+### Command line linterface
+
+The serial interface is mainly used for application logging.
+If no OLED display is detected, the serial interface is enabled for receiving commands.
+If the OLED is connected, the command interpreter is disabled to avoid conflicts.
+
+The following table resumes the available commands.
+
+| Command | Arguments  | Description                                                                     |
+| :------ | :--------- | :------------------------------------------------------------------------------ |
+| `INIT`  | none       | Initialize the SD Card (1)                                                      |
+| `CWD`   | `dirname`  | Change woring directory to `dirname`                                            |
+| `UP`    | none       | Change working director to the parent directory                                 |
+| `LST`   | none       | List files and directory in the current working directory                       |
+| `SET`   | `filename` | Select `filename`, in current working directory, as currently inserted disk (2) |
+| `REM`   | none       | Remove currently inserted disk                                                  |
+
+1. If OLED is not connected, the SD Card must be manually initialized.
+2. At startup, no disk is inserted.
+
 ## Changelog
 
 * rev1.0: first version
 * rev1.1: fixes the issues present in rev1.0:
 
-    - LV_DISK_READ connected to U4 pin 21;
-    - SD_WP connected to U4 pin 22;
-    - SD_DETECT connected to U4 pin 23;
-    - Added 10K pull-up resistor to DISK_WRITE_EN;
-    - Pin 4 and 16 of U3 are shorted together.
-
+  * LV_DISK_READ connected to U4 pin 21;
+  * SD_WP connected to U4 pin 22;
+  * SD_DETECT connected to U4 pin 23;
+  * Added 10K pull-up resistor to DISK_WRITE_EN;
+  * Pin 4 and 16 of U3 are shorted together.
 
 ## Contributors and references
 
