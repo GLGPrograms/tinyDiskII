@@ -105,3 +105,4 @@ The following table resumes the available commands.
 
 * The whole projects borns as a custom implementation of Koichi Nishida's SdiskII [[1]](https://tulip-house.ddo.jp/digital/SDISK2/english.html) [[2]](https://github.com/suaide/SDisk2), which I used as a starting point for firmware developement.
 * Jörg Hagedorn made a replica of the tinyDiskII hardware rev1.1 and he found a bug in the SD sector's addressing, now fixed.
+* Kamen Angelov made a replica of the tinyDiskII hardware rev1.1, he found a bug with SDHC card and he sent some fix proposal.
