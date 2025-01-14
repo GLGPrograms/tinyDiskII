@@ -77,7 +77,7 @@ static const prompt_commands_t prompt_commands[] = {
   {"REM", do_rem},
   {"INIT", do_init},
   // Debug commands
-  {"FAT", do_fat}, // Print FAT table for a selected file. No arguments
+  {"FAT", do_fat}, // Print FAT table for a selected file up to n-th entry
   {"INFO", do_info}, // Dump sector info for given sector and track passed as argument
   {NULL, NULL}
 };

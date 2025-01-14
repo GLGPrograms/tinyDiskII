@@ -84,6 +84,8 @@ The following table resumes the available commands.
 | `LST`   | none       | List files and directory in the current working directory                       |
 | `SET`   | `filename` | Select `filename`, in current working directory, as currently inserted disk (2) |
 | `REM`   | none       | Remove currently inserted disk                                                  |
+| `FAT`   | `upto`     | Prints FAT entries of selected file up to index `upto` (debug)                  |
+| `INFO`  | `t` `s`    | Prints .NIC file informations about sector `s` in track `t` (debug)             |
 
 1. If OLED is not connected, the SD Card must be manually initialized.
 2. At startup, no disk is inserted.
@@ -101,4 +103,5 @@ The following table resumes the available commands.
 
 ## Contributors and references
 
-The whole projects borns as a custom implementation of Koichi Nishida's SdiskII [[1]](https://tulip-house.ddo.jp/digital/SDISK2/english.html) [[2]](https://github.com/suaide/SDisk2), which I used as a starting point for firmware developement.
+* The whole projects borns as a custom implementation of Koichi Nishida's SdiskII [[1]](https://tulip-house.ddo.jp/digital/SDISK2/english.html) [[2]](https://github.com/suaide/SDisk2), which I used as a starting point for firmware developement.
+* Jörg Hagedorn made a replica of the tinyDiskII hardware rev1.1 and he found a bug in the SD sector's addressing, now fixed.
