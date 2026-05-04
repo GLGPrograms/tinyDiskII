@@ -62,10 +62,12 @@ bool encoder_clicked()
 
 int8_t encoder_update()
 {
-  uint8_t pos = TCC0.CNT;
+  uint16_t pos = TCC0.CNT;
 
   // One encoder tick adds 2 counter steps
-  int8_t delta = (pos - old_encoder_pos) >> 1;
+  int16_t delta = pos - old_encoder_pos;
+
+  delta /= 4;
 
   // Update last position only if a tick is detected
   if (delta != 0)
