@@ -2,6 +2,7 @@
 
 #include "oled_lcd.h"
 
+#include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <stdint.h>
 #include <string.h>
