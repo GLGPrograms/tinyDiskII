@@ -20,6 +20,7 @@
 #include "floppy_main.h"
 #include "sdcard.h"
 #include "sdcard_fat.h"
+#include "sdcard_gpio.h"
 #include "sdcard_nic.h"
 
 #include "debug.h"
@@ -165,7 +166,11 @@ static void do_init(const char *arg __attribute__((unused)), size_t len __attrib
 #if 0
   sdcard_insert(true);
 #endif
-  if (!sdcard_card_init() || !sdcard_fat_init())
+
+  if (!sdcard_present()) {
+    debug_printP(PSTR("No SDCard present\n\r"));
+  }
+  else if (!sdcard_card_init() || !sdcard_fat_init())
   {
 #if 0
     sdcard_insert(false);
