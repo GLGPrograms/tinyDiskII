@@ -32,9 +32,13 @@
 // Enable GUI
 #define DISPLAY_ENABLED (true)
 
+#define ACT_LED_PIN B,0
+
 static void cli_mainloop() __attribute__((noreturn));
 static void gui_mainloop() __attribute__((noreturn));
 static void display_update_file_list(uint16_t fat_idx);
+static void gpio_activity_led_init();
+static void gpio_set_activity_led(bool enable);
 
 int main()
 {
@@ -52,6 +56,9 @@ int main()
 
   // Configure floppy
   floppy_init();
+
+  // Initialize generic GPIOs
+  gpio_activity_led_init();
 
   // Initialize OLED display
   if (DISPLAY_ENABLED)
@@ -76,7 +83,9 @@ static void cli_mainloop()
     if (floppy_drive_enabled() && nic_file_selected())
     {
       debug_printP(PSTR("Reading enabled\n\r"));
+      gpio_set_activity_led(true);
       floppy_main();
+      gpio_set_activity_led(false);
     }
   }
 }
@@ -175,11 +184,13 @@ static void gui_mainloop()
         debug_printP(PSTR("Reading enabled\n\r"));
 
         oled_gui_set_busyflag(true);
+        gpio_set_activity_led(true);
 
         // While floppy is selected, floppy_main will never return
         floppy_main();
 
         oled_gui_set_busyflag(false);
+        gpio_set_activity_led(false);
       }
     }
   }
@@ -208,4 +219,16 @@ static void display_update_file_list(uint16_t fat_idx)
 
   for (i++; i < 6; i++)
     oled_gui_fileline(NULL, false, false, i);
+}
+
+static void gpio_activity_led_init() {
+  Port(ACT_LED_PIN).DIRSET = PinMsk(ACT_LED_PIN);
+  gpio_set_activity_led(false);
+}
+
+static void gpio_set_activity_led(bool enable) {
+  if (enable)
+    Port(ACT_LED_PIN).OUTSET = PinMsk(ACT_LED_PIN);
+  else
+    Port(ACT_LED_PIN).OUTCLR = PinMsk(ACT_LED_PIN);
 }
