@@ -23,12 +23,12 @@ static bool old_btn_status;
 void encoder_init()
 {
   // Configure encoder pushbutton as input with pull-up
-  Port(BTN_PIN).DIRCLR |= PinMsk(BTN_PIN);
+  Port(BTN_PIN).DIRCLR = PinMsk(BTN_PIN);
   PinCtrl(BTN_PIN) = PORT_OPC_PULLUP_gc;
   old_btn_status = Port(BTN_PIN).IN & PinMsk(BTN_PIN);
 
   // Configure encoder phases pin
-  Port(ENC_A).DIRCLR |= (PinMsk(ENC_A) | PinMsk(ENC_B));
+  Port(ENC_A).DIRCLR = (PinMsk(ENC_A) | PinMsk(ENC_B));
   // Set ENC_A and ENC_B as low level sense
   PinCtrl(ENC_A) = PORT_ISC_LEVEL_gc | PORT_OPC_PULLUP_gc;
   PinCtrl(ENC_B) = PORT_ISC_LEVEL_gc | PORT_OPC_PULLUP_gc;
