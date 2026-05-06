@@ -229,6 +229,6 @@ static void gpio_activity_led_init() {
 static void gpio_set_activity_led(bool enable) {
   if (enable)
     Port(ACT_LED_PIN).OUTSET = PinMsk(ACT_LED_PIN);
-  else
+    else
     Port(ACT_LED_PIN).OUTCLR = PinMsk(ACT_LED_PIN);
 }
